@@ -2,23 +2,29 @@ Promise = require "native-or-bluebird"
 path = require "path"
 {spawn} = require "child_process"
 
-
-module.exports = (fileName, e = "node") ->
+module.exports = (filepath, requires = [], proc = "node") ->
   return () ->
     args = Array.prototype.slice.call(arguments)
     return new Promise (resolve, reject) ->
-      f = path.join fileName
-      l = path.join(__dirname, "/launch.js")
-
-      rc = spawn e, [l, f], {
+      l = path.join __dirname, "/launch"
+      rc = spawn proc, [l], {
         cwd: process.cwd()
       }
       rc.stdin.setEncoding = "utf-8"
+      rc.stderr.setEncoding = "utf-8"
       rc.stdout.setEncoding = "utf-8"
+
+      rc.stderr.on "data", (data) ->
+        console.log "error", "#{data}"
+
+      rc.on "error", () ->
+        console.error "error reject", arguments
+
       response = ""
-      rc.on "error", ()->
-        console.log "error", arguments
-        reject("error")
+      rc.stdout.on "data", (data) ->
+        if data?
+          response = "#{response}#{data}\n"
+
       rc.on 'close', (code) ->
         if response == ""
           return reject("empty response")
@@ -27,11 +33,10 @@ module.exports = (fileName, e = "node") ->
           return resolve(res.data)
         else
           return reject(res.data)
-      rc.stdout.on "data", (data) ->
-        console.log "-","#{data}"
-        if data?
-          response = "#{response}#{data}\n"
 
-      rc.stdin.write JSON.stringify(args)
+      cwd = process.cwd()
+      p = JSON.stringify({ requires, args, cwd, filepath })
+
+      for i in [0...p.length]
+        rc.stdin.write p[i]
       rc.stdin.push null
-        #logger.log "write"
